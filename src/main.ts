@@ -1,7 +1,8 @@
 type Row = { q: number; caught: number; precision: number; false_alarms_per_h: number; median_lead_s: number | null };
 interface Summary {
   reliability: Record<string, number>;
-  warning: { horizon_s: number; base_rate: number; summaries: Record<string, { ap: number }>; sweeps: Record<string, Row[]> };
+  warning: { horizon_s: number; base_rate: number; summaries: Record<string, { ap: number }>; sweeps: Record<string, Row[]>;
+    blocked_cv: Record<string, { model: number; phase_baseline: number }>; time_ordered: Record<string, number> };
   throughput: { case_rate: number; shift_h: number; target_availability: number; budget_min: number;
     rows: { mttr_s: number; cases_per_stop: number; max_stops_in_budget: number }[] };
   phase: { hot: Record<string, { share: number; rate100_in: number; rate100_out: number; rr: number; rr_lo: number; rr_hi: number; up_share: number }> };
@@ -25,13 +26,13 @@ async function main() {
   <tr><td>MTTR</td><td>${f(r.mttr_s, 2)} s</td></tr>
   <tr><td>Availability A = MTBF / (MTBF + MTTR)</td><td>${pct(r.availability)}</td></tr>
   </tbody></table>
-  <h2>2. Early warning, ${w.horizon_s} s horizon, held-out cycles</h2>
+  <h2>2. Early warning, ${w.horizon_s} s horizon, folds split by single cycles (optimistic)</h2>
   <table><thead><tr><th>Scorer</th><th>PR-AUC</th><th>Precision at top 5%</th><th>Onsets caught</th><th>False alarms / h</th></tr></thead><tbody>
   ${[["model", "Gradient-boosted model"], ["phase_baseline", "Cycle-phase baseline"], ["tool_threshold", "Tool-current threshold"], ["random", "Chance"]]
     .map(([k, n]) => `<tr><td>${n}</td><td>${f(w.summaries[k].ap, 3)}</td><td>${pct(at(k).precision)}</td><td>${pct(at(k).caught)}</td><td>${f(at(k).false_alarms_per_h)}</td></tr>`)
     .join("")}
   </tbody></table>
-  <p>Base rate of positive rows: ${pct(w.base_rate)}.</p>
+  <p>Base rate of positive rows: ${pct(w.base_rate)}. With folds of 5 consecutive cycles the model scores ${f(w.blocked_cv["5"].model, 3)} vs ${f(w.blocked_cv["5"].phase_baseline, 3)} for the cycle-phase baseline; trained on the earlier sessions and tested on the later one, ${f(w.time_ordered.model, 3)} vs ${f(w.time_ordered.phase_baseline, 3)}. The model is not yet better than knowing the cycle position.</p>
   <h2>3. Where in the cycle stops start</h2>
   <p>${pct(h.share)} of protective-stop onsets fall in cycle samples 2 to 5 (${pct(h.up_share)} of up-time):
   ${f(h.rate100_in)} vs ${f(h.rate100_out)} onsets per 100 up-seconds, rate ratio ${f(h.rr)} (95% CI ${f(h.rr_lo)} to ${f(h.rr_hi)}).</p>

@@ -86,6 +86,22 @@ def main(src: str, out: str) -> None:
     tord = {k: (r(v) if isinstance(v, float) else v) for k, v in tord.items()}
     tord["ci"] = {k: {kk: r(vv) for kk, vv in v.items()} for k, v in tboot.items()}
 
+    # ---- blocked GroupKFold: folds made of runs of consecutive cycles ----
+    # Per-cycle folds put neighbouring cycles in different folds, but 10 s label windows and 8-sample
+    # rolling features cross cycle boundaries, so the same onset can label rows in a train and a test cycle.
+    # Grouping consecutive cycles into blocks removes most of that overlap.
+    straddle = float(np.mean([len(set(groups[i] for i in range(max(0, o - W.HORIZON_S), o) if seg[i] == seg[o])) > 1
+                              for o in onsets]))
+    blocked = dict(onset_windows_spanning_two_cycles=r(straddle))
+    for blk in (5, 10, 20):
+        gb = groups // blk
+        spb = list(W.GroupKFold(n_splits=5).split(gb, gb, gb))
+        sb = dict(model=W.oof_scores(groups_X["model"], y, mask, spb),
+                  phase_baseline=W.oof_scores(None, y, mask, spb, phase=phase))
+        bb = W.bootstrap_ap(y, sb, mask, groups, n_boot=1000, diffs=[("model", "phase_baseline")])
+        blocked[str(blk)] = dict(model=r(W.ap(y, sb["model"], mask)), phase_baseline=r(W.ap(y, sb["phase_baseline"], mask)),
+                                 ci={k: {kk: r(vv) for kk, vv in v.items()} for k, v in bb.items()})
+
     observed_h = rel["observed_s"] / 3600.0
     sweeps = {}
     summaries = {}
@@ -135,6 +151,11 @@ def main(src: str, out: str) -> None:
         m = (df["segment"] == sgi).to_numpy()
         sub = df[m].reset_index(drop=True)
         hot_by_seg[int(sgi)] = P.hot_window(sub, R.rising_edges(sub["stop"], sub["segment"]), down[m])
+    hot_by_seg_2_5 = {}
+    for sgi in sorted(df["segment"].unique()):
+        m = (df["segment"] == sgi).to_numpy()
+        sub = df[m].reset_index(drop=True)
+        hot_by_seg_2_5[int(sgi)] = P.hot_window(sub, R.rising_edges(sub["stop"], sub["segment"]), down[m], (2, 5))
     profile = P.phase_profile(df, down, onset_idx, 15)
     par = P.pareto(df, ep)
     stop_rate_h = rel["n_stop_onsets"] / observed_h
@@ -153,7 +174,10 @@ def main(src: str, out: str) -> None:
         x = R.interarrivals(df, onsets[m[onsets]])
         if len(x) >= 20:
             wb_seg[int(sgi)] = {k: r(v, 4) for k, v in R.weibull_fit(x, n_boot=500).items()}
-    rel_stats = dict(weibull={k: r(v, 4) for k, v in wb.items()}, weibull_by_segment=wb_seg, mtbf_lo=r(lo, 2), mtbf_hi=r(hi, 2),
+    # inter-arrivals of protective-stop onsets only (the fit above uses every episode, stop or grip loss)
+    wb_stop = {k: r(v, 4) for k, v in R.weibull_fit(R.interarrivals(df, onset_idx["stop"])).items()}
+    rel_stats = dict(weibull={k: r(v, 4) for k, v in wb.items()}, weibull_stop_only=wb_stop,
+                     weibull_by_segment=wb_seg, mtbf_lo=r(lo, 2), mtbf_hi=r(hi, 2),
                      availability_ci={k: r(v, 4) for k, v in aci.items()})
 
     # timeline (all rows, compact)
@@ -184,11 +208,13 @@ def main(src: str, out: str) -> None:
         reliability={k: r(v, 4) for k, v in rel.items()},
         reliability_stats=rel_stats,
         load_models=buildup,
-        phase=dict(bins=haz, hot=hot, hot_by_segment=hot_by_seg, profile=profile, pareto=par, power=power),
+        phase=dict(bins=haz, hot=hot, hot_by_segment=hot_by_seg, hot_by_segment_2_5=hot_by_seg_2_5,
+                   profile=profile, pareto=par, power=power),
         warning=dict(horizon_s=W.HORIZON_S, window=W.WIN, base_rate=r(y[mask].mean()),
                      scored_rows=int(mask.sum()), summaries=summaries, sweeps=sweeps,
                      features=cols, cv="5-fold GroupKFold by cycle",
-                     ablation=ablation, diffs=diffs, time_ordered=tord, bootstrap="1000 cycle-block resamples"),
+                     ablation=ablation, diffs=diffs, time_ordered=tord, blocked_cv=blocked,
+                     bootstrap="1000 cycle-block resamples"),
         throughput=tp,
     )
     with open(os.path.join(out, "summary.json"), "w") as f:
