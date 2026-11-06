@@ -114,3 +114,95 @@ def pr_summary(y, score, mask):
     yy, ss = yy[ok], ss[ok]
     p, r, t = precision_recall_curve(yy, ss)
     return dict(ap=float(average_precision_score(yy, ss)), precision=p.tolist(), recall=r.tolist())
+
+
+# ---------- stronger baselines, ablation, time-ordered holdout, bootstrap ----------
+PHASE_CAP = 40
+
+
+def make_gbm(seed=0):
+    return HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_leaf_nodes=15,
+                                          l2_regularization=1.0, random_state=seed)
+
+
+def phase_rate_fit(phase, y, prior_n: float = 5.0):
+    """P(onset within horizon | cycle phase), smoothed toward the overall rate with `prior_n` pseudo-rows."""
+    p = np.minimum(phase, PHASE_CAP)
+    base = y.mean()
+    num = np.bincount(p, y, minlength=PHASE_CAP + 1)
+    den = np.bincount(p, minlength=PHASE_CAP + 1)
+    return (num + prior_n * base) / (den + prior_n)
+
+
+def phase_rate_score(table, phase):
+    return table[np.minimum(phase, PHASE_CAP)]
+
+
+def splits_groupkfold(df, n_splits=5):
+    g = df["cycle"].to_numpy()
+    return list(GroupKFold(n_splits=n_splits).split(g, g, g))
+
+
+def oof_scores(X, y, mask, splits, phase=None, seed=0):
+    """Out-of-fold scores. X=None means the phase-rate baseline (needs `phase`)."""
+    oof = np.full(len(y), np.nan)
+    for tr, te in splits:
+        tr = tr[mask[tr]]
+        if X is None:
+            oof[te] = phase_rate_score(phase_rate_fit(phase[tr], y[tr]), phase[te])
+        else:
+            oof[te] = make_gbm(seed).fit(X[tr], y[tr]).predict_proba(X[te])[:, 1]
+    return oof
+
+
+def ap(y, s, mask):
+    ok = mask & ~np.isnan(s)
+    return float(average_precision_score(y[ok], s[ok]))
+
+
+def bootstrap_ap(y, scores: dict, mask, groups, n_boot=1000, seed=0, diffs=()):
+    """Cycle-block bootstrap of PR-AUC for each scorer, and of differences (a - b) for pairs in `diffs`.
+    Rows of a resampled cycle come in together, so within-cycle correlation is respected."""
+    idx = np.flatnonzero(mask)
+    g = groups[idx]
+    cyc, inv = np.unique(g, return_inverse=True)
+    order = np.argsort(inv, kind="stable")
+    starts = np.r_[0, np.cumsum(np.bincount(inv))]
+    rows_of = [idx[order[starts[i]:starts[i + 1]]] for i in range(len(cyc))]
+    rng = np.random.default_rng(seed)
+    out = {k: [] for k in scores}
+    dout = {f"{a}-{b}": [] for a, b in diffs}
+    for _ in range(n_boot):
+        pick = rng.integers(0, len(cyc), len(cyc))
+        r = np.concatenate([rows_of[i] for i in pick])
+        yy = y[r]
+        if yy.sum() == 0:
+            continue
+        vals = {k: float(average_precision_score(yy, s[r])) for k, s in scores.items()}
+        for k, v in vals.items():
+            out[k].append(v)
+        for a, b in diffs:
+            dout[f"{a}-{b}"].append(vals[a] - vals[b])
+    ci = lambda v: dict(lo=float(np.percentile(v, 2.5)), hi=float(np.percentile(v, 97.5)))
+    res = {k: ci(v) for k, v in out.items()}
+    res.update({k: ci(v) | dict(p_le_0=float(np.mean(np.array(v) <= 0))) for k, v in dout.items()})
+    return res
+
+
+def time_ordered(df, X_by_name: dict, y, mask, train_segs=(0, 1), test_seg=2, seed=0):
+    """Train on earlier recording segments, test on the later one. Returns test-segment PR-AUC per scorer."""
+    seg = df["segment"].to_numpy()
+    phase = df["phase"].to_numpy()
+    tr = np.isin(seg, train_segs) & mask
+    te = (seg == test_seg) & mask
+    out = {}
+    for name, X in X_by_name.items():
+        if X is None:
+            s = phase_rate_score(phase_rate_fit(phase[tr], y[tr]), phase[te])
+        else:
+            s = make_gbm(seed).fit(X[tr], y[tr]).predict_proba(X[te])[:, 1]
+        out[name] = float(average_precision_score(y[te], s))
+    out["_test_base_rate"] = float(y[te].mean())
+    out["_train_rows"], out["_test_rows"] = int(tr.sum()), int(te.sum())
+    out["_train_positives"], out["_test_positives"] = int(y[tr].sum()), int(y[te].sum())
+    return out

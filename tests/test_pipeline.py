@@ -47,11 +47,15 @@ def test_labels_horizon_and_mask():
 
 
 def test_throughput_hand_calc():
-    # 12 cases/min, 8 h shift, A = 0.95 -> 24 min down -> 288 cases; half caught -> 144
-    out = T.cases_lost(12, 8, 0.95, 0.5)
-    assert out["down_min"] == pytest.approx(24.0)
-    assert out["cases_lost"] == pytest.approx(288.0)
-    assert out["cases_lost_after"] == pytest.approx(144.0)
+    # 99.6% of an 8 h shift -> 480 * 0.004 = 1.92 min budget; a 2 min reset at 12 cases/min costs 24 cases,
+    # so the budget fits 1.92 / 2 = 0.96 stops; 5 stops x 30 s x 12/min = 30 cases
+    assert T.budget_min(8, 0.996) == pytest.approx(1.92)
+    assert T.cases_lost(1, 120, 12) == pytest.approx(24.0)
+    assert T.max_stops(8, 0.996, 120) == pytest.approx(0.96)
+    assert T.cases_lost(5, 30, 12) == pytest.approx(30.0)
+    sens = T.sensitivity()
+    row = next(x for x in sens["rows"] if x["mttr_s"] == 120.0)
+    assert row["availability"][0] == pytest.approx(1 - 2 / 480)
 
 
 @pytest.mark.skipif(not os.path.exists(XLSX), reason="dataset not downloaded")
@@ -87,3 +91,118 @@ class TestRealData:
         g = df["cycle"].to_numpy()
         for tr, te in GroupKFold(5).split(g, g, g):
             assert not set(g[tr]) & set(g[te])
+
+
+# ---------- cycle-phase hazard ----------
+import phase as P
+
+
+def phase_toy():
+    # two cycles of 6 samples; onsets (rising edges of stop) at phase 2 in both cycles and phase 4 in cycle 2
+    stop = [0, 0, 1, 0, 0, 0,  0, 0, 1, 0, 1, 0]
+    df = pd.DataFrame(dict(cycle=[1] * 6 + [2] * 6, segment=0, stop=stop, grip=[False] * 12,
+                           dt=1.0, **{f"Speed_J{j}": 0.0 for j in range(6)}))
+    return P.add_phase(df)
+
+
+def test_phase_index_resets_each_cycle():
+    df = phase_toy()
+    assert list(df["phase"]) == [0, 1, 2, 3, 4, 5] * 2
+
+
+def test_hazard_hand_calc():
+    df = phase_toy()
+    down = (df["stop"] == 1).to_numpy()
+    idx = R.rising_edges(df["stop"], df["segment"])
+    assert list(idx) == [2, 8, 10]
+    tab = P.hazard_table(df, dict(stop=idx), down, bins=[(0, 1), (2, 3), (4, 5)])
+    # bin 2-3: rows 2,3,8,9; down rows 2,8 -> 2 up-seconds, onsets at 2 and 8 -> 2 per 2 s = 100 per 100 s
+    b = tab[1]
+    assert b["up_s"] == pytest.approx(2.0) and b["stop"]["n"] == 2
+    assert b["stop"]["rate100"] == pytest.approx(100.0)
+    # bin 4-5: rows 4,5,10,11; row 10 down -> 3 up-s, 1 onset
+    assert tab[2]["up_s"] == pytest.approx(3.0) and tab[2]["stop"]["n"] == 1
+
+
+def test_poisson_ci_known_values():
+    lo, hi = P.poisson_ci(0, 1.0)
+    assert lo == 0 and hi == pytest.approx(3.689, abs=1e-3)   # classic zero-event 95% upper bound
+    lo, hi = P.poisson_ci(10, 1.0)
+    assert lo == pytest.approx(4.795, abs=1e-3) and hi == pytest.approx(18.390, abs=1e-3)
+
+
+def test_rate_ratio_equal_rates_is_one():
+    rr = P.rate_ratio_test(20, 100.0, 20, 100.0)
+    assert rr["rr"] == pytest.approx(1.0) and rr["lo"] < 1 < rr["hi"] and rr["p"] > 0.9
+
+
+def test_events_needed_hand_calc():
+    # (1.95996 + 0.84162)^2 * (1 + 1/0.5) / ln(0.5)^2 = 7.8489 * 3 / 0.48045 = 49.01
+    assert P.events_needed(0.5) == pytest.approx(49.01, abs=0.02)
+    assert P.run_hours_needed(0.25) == pytest.approx(49.01 / 0.25, rel=1e-3)
+
+
+def test_pareto_toy():
+    df = pd.DataFrame(dict(cycle=range(10)))
+    ep = pd.DataFrame(dict(cycle=[0, 0, 1, 2], duration_s=[5.0, 3.0, 1.0, 1.0]))
+    out = P.pareto(df, ep)
+    assert out["top10pct_cycles"] == 1 and out["top10pct_share"] == pytest.approx(0.8)
+    assert out["cycles_with_episode"] == 3 and out["cycles_for_half"] == 1
+
+
+# ---------- reliability statistics ----------
+def test_weibull_recovers_known_shape():
+    rng = np.random.default_rng(1)
+    assert R.weibull_fit(rng.exponential(40, 2000), n_boot=50)["shape"] == pytest.approx(1.0, abs=0.06)
+    assert R.weibull_fit(40 * rng.weibull(2.0, 2000), n_boot=50)["shape"] == pytest.approx(2.0, abs=0.12)
+
+
+def test_mtbf_ci_formula_and_brackets_point():
+    from scipy.stats import chi2
+    lo, hi = R.mtbf_ci(1000.0, 10)
+    assert lo == pytest.approx(2000 / chi2.ppf(0.975, 22)) and hi == pytest.approx(2000 / chi2.ppf(0.025, 20))
+    assert lo < 100 < hi
+
+
+def test_interarrivals_drop_cross_segment_pairs():
+    t = pd.to_datetime([0, 10, 25, 1000, 1030], unit="s", utc=True)
+    df = pd.DataFrame(dict(t=t, segment=[0, 0, 0, 1, 1]))
+    assert list(R.interarrivals(df, np.array([0, 1, 2, 3, 4]))) == [10.0, 15.0, 30.0]
+
+
+# ---------- stronger baselines ----------
+def test_phase_rate_fit_hand_calc():
+    phase = np.array([0, 0, 1, 1, 1, 1])
+    y = np.array([1, 0, 0, 0, 0, 1])
+    tab = W.phase_rate_fit(phase, y, prior_n=0.0)
+    assert tab[0] == pytest.approx(0.5) and tab[1] == pytest.approx(0.25)
+    tab = W.phase_rate_fit(phase, y, prior_n=2.0)   # shrink toward overall 1/3
+    assert tab[0] == pytest.approx((1 + 2 / 3) / 4)
+
+
+def test_bootstrap_ap_perfect_scorer_and_diff():
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 400)
+    groups = np.repeat(np.arange(40), 10)
+    mask = np.ones(400, bool)
+    out = W.bootstrap_ap(y, dict(perfect=y.astype(float), noise=rng.random(400)), mask, groups,
+                         n_boot=100, diffs=[("perfect", "noise")])
+    assert out["perfect"]["lo"] == pytest.approx(1.0)
+    assert out["perfect-noise"]["lo"] > 0.3 and out["perfect-noise"]["p_le_0"] == 0.0
+
+
+@pytest.mark.skipif(not os.path.exists(XLSX), reason="dataset not downloaded")
+def test_time_ordered_split_is_disjoint_in_time():
+    df = R.load(XLSX)
+    seg = df["segment"].to_numpy()
+    assert df.loc[seg == 2, "t"].min() > df.loc[np.isin(seg, [0, 1]), "t"].max()
+
+
+@pytest.mark.skipif(not os.path.exists(XLSX), reason="dataset not downloaded")
+def test_phase_bins_account_for_every_stop_onset():
+    df = P.add_phase(R.load(XLSX))
+    down = ((df["stop"] == 1) | df["grip"]).to_numpy()
+    idx = R.rising_edges(df["stop"], df["segment"])
+    tab = P.hazard_table(df, dict(stop=idx), down)
+    assert sum(b["stop"]["n"] for b in tab) == 108
+    assert sum(b["share_up"] for b in tab) == pytest.approx(1.0)
