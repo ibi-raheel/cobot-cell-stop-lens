@@ -95,6 +95,8 @@ b { font-weight: 600; }
 }
 .lede { margin: 20px 0 0; max-width: 54ch; font-size: 19px; color: var(--ink-2); text-wrap: pretty; }
 .nw { white-space: nowrap; }
+.sol { margin: 14px 0 0; max-width: 54ch; font-size: 19px; color: var(--ink); text-wrap: pretty; }
+.sol b { color: var(--stop); }
 .chips { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .chips li {
   padding: 6px 10px 5px; border: 1px solid var(--rule-strong); border-radius: 2px; background: var(--panel);
@@ -433,7 +435,7 @@ button.ro:active { background: #d7dad3; }
   .bar-meta { display: none; }
   .layout { padding: 0 16px; }
   .intro { padding: 56px 0 40px; }
-  .lede { font-size: 17px; }
+  .lede, .sol { font-size: 17px; }
   .chips li { font-size: 12px; }
   .recipe li { font-size: 15.5px; grid-template-columns: 28px minmax(0, 1fr); }
   .cmd code { font-size: 12px; white-space: normal; overflow-wrap: anywhere; }

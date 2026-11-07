@@ -5,7 +5,7 @@
 **Answer on the reference data** (UR3 CobotOps, one robot, 2.08 h; see [README](README.md) and [METHOD.md](METHOD.md)):
 - 71 % of protective stops (77 of 108) start in one 4-second window, cycle samples 2-5, right after the fastest J2 swing. That window is 12 % of up-time, so its stop rate is 18x the rest of the cycle (rate ratio 18.1 [11.8, 28.4]).
 - Fixing that move would remove up to 59 % of stops [50 %, 69 %]: 56 to 23 stops per up-hour. "Up to", because the window was picked on the same data.
-- Dropped parts come from a different move, transfer and place (samples 15-30, 49 of 77 grip losses, rate ratio 2.9 [1.8, 4.8]). A small 1D-CNN on physics-residual joint currents warns of them 3-10 s ahead at PR-AUC 0.55 [0.47, 0.63], against 0.34 for the best simple rule.
+- Most dropped parts start later, in transfer and place (samples 15-30: 49 of 77 grip losses, rate ratio 2.9 [1.8, 4.8]). Per up-second, samples 2-5 drop parts at a similar rate (1.80 vs 1.88 per 100 up-s), so drops get their own test on both windows. A small 1D-CNN on physics-residual joint currents warns of them 3-10 s ahead at PR-AUC 0.55 [0.47, 0.63], against 0.34 for the best simple rule.
 - For protective stops the model does not beat knowing the cycle position (0.272 vs 0.246, interval of the difference spans zero). Stops get a fix, not an alarm.
 - At a 99.6 % uptime target, one 2-minute manual reset uses the whole shift's downtime budget (1.92 min per 8 h shift, which fits 0.96 such stops). Case rate, shift length, recovery time and the target are assumptions, not measurements.
 
@@ -14,7 +14,7 @@ Caveats that travel with the 18x: one robot, 2.08 h; one recording session holds
 ## The playbook: find the move, fix the move
 
 1. **Tag.** Export one cell's controller stop/fault log with the program line or waypoint (or the sample index in the cycle). Pull the recovery time for each stop from the maintenance system.
-2. **Split.** Protective stops and dropped parts are separate failures. On the reference data they came from different moves and need different fixes.
+2. **Split.** Protective stops and dropped parts are separate failures. On the reference data stops concentrate in samples 2-5, while most drops come later, so they need different fixes.
 3. **Rank.** Compare moves by onsets per up-hour with exact Poisson intervals.
 4. **Check.** Confirm the hot move holds in each shift or session, so you are not reacting to one bad afternoon.
 5. **Price.** Stops x site recovery time x case rate, against the contracted uptime budget.
@@ -29,7 +29,7 @@ Caveats that travel with the 18x: one robot, 2.08 h; one recording session holds
 | --- | --- | --- |
 | Call a move "hot" | Lower bound of its rate ratio vs the rest of the cycle is above 1 | Stops, samples 2-5: RR 18.1, lower bound 11.8. Grip losses, samples 15-30: RR 2.9, lower bound 1.8 |
 | Trust it across time | Lower bound above 1 in each session that has enough events; flag sessions that are not | 11.4 and 24.2 in the two larger sessions; the 7-stop session is inconclusive |
-| Stops vs drops | Rank separately; fix them separately | Different windows (2-5 vs 15-30) |
+| Stops vs drops | Rank separately; fix them separately | Stops: 2-5. Drops: mostly 15-30, with 2-5 close behind per up-second |
 | Narrow winner | If the top window's interval overlaps the runner-up's, say so and test both | Grip losses: 15-30 (1.88 per 100 up-s) vs 2-5 (1.80) overlap |
 | Value of a fix | Stops removed if the hot window ran at the cycle-average rate; report as "up to" when the window was picked on the same data | Up to 59 % [50 %, 69 %] |
 | Is one stop affordable? | Stops allowed per shift = budget minutes / recovery minutes | 2-min reset at 99.6 %: 0.96 per shift |

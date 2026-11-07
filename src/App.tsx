@@ -75,13 +75,14 @@ function Hero({ d }: { d: Data | null }) {
       <h1>A robot cell keeps stopping. Which move is causing it, and what do you fix first?</h1>
       {d && hot && fx && tp && manual && (
         <>
-          <p className="lede">On two hours of real cobot telemetry, {pct(hot.share, 0)} of protective stops start in one {hot.window[1] - hot.window[0] + 1}-second move. Fixing that move removes up to {pct(fx.share_removed, 0)} of them. Dropped parts come from a different move, and a small AI model warns of those <span className="nw">3&ndash;10&nbsp;s</span> ahead.</p>
+          <p className="lede">On two hours of public telemetry from a real cobot, {pct(hot.share, 0)} of protective stops start in one <span className="nw">{hot.window[1] - hot.window[0] + 1}-second</span> move. Fixing that move would remove up to {pct(fx.share_removed, 0)} of them. Most dropped parts start later in the cycle, and a small AI model warns of those <span className="nw">3&ndash;10&nbsp;s</span> ahead.</p>
+          <p className="sol"><b>The solution:</b> a stop map. Tag each stop with the move that was running, rank the moves, and test one change on the worst.</p>
           <ul className="chips" aria-label="Key figures">
             <li><b>{f(d.s.reliability.n_stop_onsets, 0)}</b> stops measured</li>
             <li><b>{f(hot.rr, 0)}&times;</b> the stop rate in that window</li>
-            <li>one <b>{f(manual.mttr_s / 60, 0)}-min</b> reset fills a <b>{pct(tp.target_availability, 1)}</b> uptime budget</li>
+            <li>one <b>{f(manual.mttr_s / 60, 0)}-min</b> reset a shift breaks <b>{pct(tp.target_availability, 1)}</b> uptime</li>
           </ul>
-          <a className="cta" href="#solution">Here&rsquo;s the playbook <span aria-hidden>&rarr;</span></a>
+          <a className="cta" href="#solution">See the playbook <span aria-hidden>&rarr;</span></a>
         </>
       )}
     </section>
@@ -393,7 +394,7 @@ function SolutionStep({ d }: { d: Data }) {
     <>Tag each stop with the move that was running.</>,
     <>Rank moves by stops per up-hour, with intervals. Stops and drops are ranked separately.</>,
     <>Price the top move: stops &times; recovery time &times; case rate, against the budget.</>,
-    <>Change one thing on that move, then compare. A 50% drop needs {n} stops before the change to prove it.</>,
+    <>Change one thing on that move, then compare. A 50% drop needs {n} stops before the change to detect it with 80% power.</>,
   ];
   return (
     <>
