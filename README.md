@@ -14,7 +14,7 @@ At the end of a packaging line, the palletizing cell sets the pace for everythin
 6. **Cost per stop.** Against a 99.6 % uptime budget (1.92 min per 8 h shift), a 2-minute manual reset costs 24 cases at 12 cases/min, and the budget fits fewer than one such stop per shift. A sensitivity table covers 2.9 s to 5 min recovery times. Case rate, shift and target are assumptions, not measurements.
 7. **Week-1 test plan.** Tag stops by program waypoint, rank by exact Poisson rate, change one variable on the hottest move; detecting a 50 % drop at 80 % power needs 49 stops in the baseline arm (hours per arm tabulated by stop rate).
 
-The current page is a plain results view; the visual walkthrough is in progress.
+The web page walks through these results in six steps: the run log, cost per stop, the cycle timeline with a joint-by-joint arm view, the grip-loss model against its baselines, the J2-swing fix estimate, and the checks.
 
 ## How it works
 - `pipeline/reliability.py`: cleaning, segmentation at recording gaps, episode detection, MTBF/MTTR/availability, chi-square MTBF interval, cycle-bootstrap availability interval, Weibull inter-arrival fit with KS test.
