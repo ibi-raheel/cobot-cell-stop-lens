@@ -1,5 +1,9 @@
 # Method
 
+## Research question
+
+When a robot cell keeps throwing protective stops and dropping parts, which move in the cycle is causing it, what does each stop cost against a contracted uptime target, and what single change should be tested first? Section 3 answers where onsets cluster in the cycle and sizes the trial (3.1), 5.5 tests whether a learned model adds warning beyond cycle position, 5.6 estimates what fixing the hot move is worth, and 6 prices a stop against the uptime budget; [SOLUTION.md](SOLUTION.md) turns the answer into a playbook and the `pipeline/stop_map.py` tool.
+
 All numbers below are produced by `pipeline/run.py` from the raw dataset and written to `public/data/summary.json`; the learned-model study (sections 5.5 and 5.6) is produced by `pipeline/run_learned.py` into `public/data/learned.json`. Nothing is tuned to a target result.
 
 ## 1. Data
@@ -329,5 +333,6 @@ mkdir -p downloads && curl -L -o downloads/ur3.zip "https://archive.ics.uci.edu/
 OMP_NUM_THREADS=2 .venv/bin/python -I pipeline/run.py downloads/dataset_02052023.xlsx public/data
 OMP_NUM_THREADS=3 .venv/bin/python -I pipeline/run_learned.py downloads/dataset_02052023.xlsx public/data   # about 7 min on 3 CPU threads
 OMP_NUM_THREADS=3 .venv/bin/python -I pipeline/check_leakage.py downloads/dataset_02052023.xlsx public/data  # causal-feature and grip-aware-baseline checks
+OMP_NUM_THREADS=3 .venv/bin/python -I pipeline/stop_map.py downloads/dataset_02052023.xlsx --window 2-5 --grip-window 15-30  # the stop map (SOLUTION.md)
 .venv/bin/python -I -m pytest -q tests
 ```

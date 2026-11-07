@@ -1,6 +1,14 @@
 # Cobot Cell Stop Lens
 
-Finds where in the robot cycle protective stops and grip losses start, using real UR3 cobot telemetry, tests a small sequence model on physics-model current residuals for early warning (it beats simple baselines on grip losses, not on protective stops), and prices each stop against a contracted uptime budget.
+**The question.** When a robot cell keeps throwing protective stops and dropping parts, which move in the cycle is causing it, what does each stop cost against a contracted uptime target, and what single change should be tested first?
+
+**The answer, measured on real UR3 cobot telemetry.** 71 % of protective stops (77 of 108) started in one 4-second window right after the fastest J2 swing, 18x the rate of the rest of the cycle. Fixing that move would remove up to 59 % of stops. Dropped parts came from a different move (transfer and place), and a small AI model on physics-residual joint currents warned of them 3-10 s ahead at 0.55 PR-AUC, vs 0.34 for the best simple rule. For stops the model does not beat knowing the cycle position, so stops get a fix, not an alarm. At 99.6 % uptime, one 2-minute manual reset uses the whole shift's downtime budget (case rate, shift length and the target are assumptions). One robot, 2.08 h: caveats in result 1 below.
+
+**The solution.** A one-page playbook and a small tool, `pipeline/stop_map.py`: one cell log in, a ranked fix list, its cost against the uptime budget and the trial size out. See **[SOLUTION.md](SOLUTION.md)**.
+
+```bash
+OMP_NUM_THREADS=3 .venv/bin/python -I pipeline/stop_map.py downloads/dataset_02052023.xlsx --window 2-5 --grip-window 15-30
+```
 
 ## The problem
 At the end of a packaging line, the palletizing cell sets the pace for everything upstream. Each protective stop or dropped case costs output, and finding the move that causes them is usually manual root-cause work.
@@ -14,7 +22,7 @@ At the end of a packaging line, the palletizing cell sets the pace for everythin
 6. **Cost per stop.** Against a 99.6 % uptime budget (1.92 min per 8 h shift), a 2-minute manual reset costs 24 cases at 12 cases/min, and the budget fits fewer than one such stop per shift. A sensitivity table covers 2.9 s to 5 min recovery times. Case rate, shift and target are assumptions, not measurements.
 7. **Week-1 test plan.** Tag stops by program waypoint, rank by exact Poisson rate, change one variable on the hottest move; detecting a 50 % drop at 80 % power needs 49 stops in the baseline arm (hours per arm tabulated by stop rate).
 
-The web page walks through these results in six steps: the run log, cost per stop, the cycle timeline with a joint-by-joint arm view, the grip-loss model against its baselines, the J2-swing fix estimate, and the checks.
+The web page walks through these results in seven steps: the run log, cost per stop, the cycle timeline with a joint-by-joint arm view, the grip-loss model against its baselines, the J2-swing fix estimate, the checks, and the stop-map playbook.
 
 ## How it works
 - `pipeline/reliability.py`: cleaning, segmentation at recording gaps, episode detection, MTBF/MTTR/availability, chi-square MTBF interval, cycle-bootstrap availability interval, Weibull inter-arrival fit with KS test.
@@ -23,8 +31,9 @@ The web page walks through these results in six steps: the run log, cost per sto
 - `pipeline/learned.py`, `pipeline/run_learned.py`: physics residual model on integrated joint angles, 1D-CNN (PyTorch, CPU), contiguous time-blocked folds with purge, lead-time labels, phase + recency baseline, channel ablation, block bootstrap, J2-swing fix arithmetic; writes `public/data/learned.json`.
 - `pipeline/check_leakage.py`: re-scores the grip-loss and stop targets with strictly causal features and a grip-aware recency baseline; writes `public/data/leakage_checks.json`.
 - `pipeline/throughput.py`: cost per stop and stops allowed by an availability budget.
+- `pipeline/stop_map.py`: the stop-map tool, a thin CLI over the modules above (see SOLUTION.md).
 - `pipeline/run.py`: writes static JSON to `public/data/`; the front end (Vite + TypeScript) reads it. No API keys.
-- `tests/`: 34 pytest tests: hand calculations, known statistical values, leakage and time-order checks. Equations, assumptions and limits: [METHOD.md](METHOD.md).
+- `tests/`: 36 pytest tests: hand calculations, known statistical values, leakage and time-order checks. Equations, assumptions and limits: [METHOD.md](METHOD.md).
 
 ## Run locally
 ```bash

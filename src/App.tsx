@@ -11,6 +11,7 @@ const STEPS = [
   { id: "warn", short: "Grip-loss warning" },
   { id: "fix", short: "Fixing the move" },
   { id: "proof", short: "How we know" },
+  { id: "solution", short: "The solution" },
 ];
 
 export function App() {
@@ -43,11 +44,7 @@ export function App() {
         </nav>
 
         <main className="main">
-          <section className="intro">
-            <p className="kicker">Cobot cell health</p>
-            <h1>Where a robot cell loses its time, and which move to fix first.</h1>
-            <p className="lede">Two hours of real telemetry from a six-axis collaborative arm, walked through in six steps.</p>
-          </section>
+          <Hero d={d} />
 
           {err && <p className="err" role="alert">Could not load the results: {err}</p>}
           {!d && !err && <p className="loading">Loading results&hellip;</p>}
@@ -64,6 +61,30 @@ export function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+function Hero({ d }: { d: Data | null }) {
+  const hot = d?.s.phase.hot.stop_2_5;
+  const fx = d?.l.j2_fix;
+  const tp = d?.s.throughput;
+  const manual = tp?.rows.find((x) => x.mttr_s === 120);
+  return (
+    <section className="intro">
+      <p className="kicker">Cobot cell health</p>
+      <h1>A robot cell keeps stopping. Which move is causing it, and what do you fix first?</h1>
+      {d && hot && fx && tp && manual && (
+        <>
+          <p className="lede">On two hours of real cobot telemetry, {pct(hot.share, 0)} of protective stops start in one {hot.window[1] - hot.window[0] + 1}-second move. Fixing that move removes up to {pct(fx.share_removed, 0)} of them. Dropped parts come from a different move, and a small AI model warns of those <span className="nw">3&ndash;10&nbsp;s</span> ahead.</p>
+          <ul className="chips" aria-label="Key figures">
+            <li><b>{f(d.s.reliability.n_stop_onsets, 0)}</b> stops measured</li>
+            <li><b>{f(hot.rr, 0)}&times;</b> the stop rate in that window</li>
+            <li>one <b>{f(manual.mttr_s / 60, 0)}-min</b> reset fills a <b>{pct(tp.target_availability, 1)}</b> uptime budget</li>
+          </ul>
+          <a className="cta" href="#solution">Here&rsquo;s the playbook <span aria-hidden>&rarr;</span></a>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -173,7 +194,9 @@ function Story({ d }: { d: Data }) {
           <div><dt>Wear-out</dt><dd>Weibull shape <b>{f(s.reliability_stats.weibull.shape, 2)}</b> <span>{ci(s.reliability_stats.weibull.shape_lo, s.reliability_stats.weibull.shape_hi, 2)}</span>, no rising hazard inside two hours</dd></div>
         </dl>
       </Step>
-      <p className="handoff">Next on a real line: tag stops by program waypoint, change one variable on the hottest move, and compare. Spotting a 50% drop with 80% power needs {f(s.phase.power.events_baseline_arm, 0)} stops in the baseline arm.</p>
+
+      {/* 07 ---------------------------------------------------------------- */}
+      <SolutionStep d={d} />
     </>
   );
 }
@@ -362,6 +385,34 @@ function FixStep({ d }: { d: Data }) {
   );
 }
 
+/* ---------------------------------------------------------------- step 7 */
+
+function SolutionStep({ d }: { d: Data }) {
+  const n = f(d.s.phase.power.events_baseline_arm, 0);
+  const lines: ReactNode[] = [
+    <>Tag each stop with the move that was running.</>,
+    <>Rank moves by stops per up-hour, with intervals. Stops and drops are ranked separately.</>,
+    <>Price the top move: stops &times; recovery time &times; case rate, against the budget.</>,
+    <>Change one thing on that move, then compare. A 50% drop needs {n} stops before the change to prove it.</>,
+  ];
+  return (
+    <>
+      <Step n={7} id="solution" title="The solution: a stop map for any cell"
+        panel="STOP MAP · ONE LOG IN, ONE FIX LIST OUT"
+        lead={<>One page and one command. Give it a cell&rsquo;s stop log, and it ranks the moves by stops per hour, splits stops from dropped parts, prices each one against the uptime budget, and sizes the test for the fix.</>}>
+        <ol className="recipe">
+          {lines.map((l, i) => <li key={i}><span className="recipe-n">{String(i + 1).padStart(2, "0")}</span><span>{l}</span></li>)}
+        </ol>
+        <div className="cmd" aria-label="Command">
+          <span className="cmd-p" aria-hidden>$</span>
+          <code>python pipeline/stop_map.py cell_log.xlsx --recovery-s 120</code>
+        </div>
+      </Step>
+      <p className="handoff">Built on public telemetry. On a real line, week one: one cell&rsquo;s history in, a ranked fix list and a test plan out.</p>
+    </>
+  );
+}
+
 /* ---------------------------------------------------------------- step 6 details */
 
 function ProofDetails({ d }: { d: Data }) {
@@ -373,7 +424,7 @@ function ProofDetails({ d }: { d: Data }) {
       <p><b>Per session.</b> The 2–5 window was picked from the pooled data, so it is re-checked per session. Session 3 holds most of the stops, so the pooled figure leans on it; session 1 has only {s.phase.hot_by_segment_2_5["0"].n_in + s.phase.hot_by_segment_2_5["0"].n_out} stops and is inconclusive.</p>
       <p><b>Reliability.</b> Gaps between down episodes fit a Weibull with shape {f(w.shape, 2)} {ci(w.shape_lo, w.shape_hi, 2)}; stops alone {f(ws.shape, 2)} {ci(ws.shape_lo, ws.shape_hi, 2)}. The gaps are lumpier than exponential (KS p = {f(w.ks_exp_p, 2)}). Two hours cannot rule out wear over weeks; the data does show that stops track cycle position.</p>
       <p><b>Models.</b> Folds are contiguous blocks of time with a 20-sample purge either side. An earlier gradient-boosted stop model looked better only when folds split single cycles; with cycles kept together its edge was gone. The stop result here: model {f(so.ap.cnn.v, 3)}, phase + recency {f(so.ap.phase_recency.v, 3)}.</p>
-      <p><b>Tests.</b> 34 pytest tests cover the hand calculations, known statistical values, leakage and time order. Equations and assumptions are in METHOD.md in the repository.</p>
+      <p><b>Tests.</b> 36 pytest tests cover the hand calculations, known statistical values, leakage and time order. Equations and assumptions are in METHOD.md in the repository.</p>
     </>
   );
 }
