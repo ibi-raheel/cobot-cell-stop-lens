@@ -193,7 +193,7 @@ function WhereStep({ d }: { d: Data }) {
   return (
     <Step n={3} id="where" title="Stops start right after the J2 swing"
       panel={`CYCLE TIMELINE · ${JOINTS[joint].id} ${JOINTS[joint].name.toUpperCase()}`}
-      lead={<>{hot.n_in} of {hot.n_in + hot.n_out} protective stops ({pct(hot.share, 0)}) start in cycle samples 2–5, just after the fastest J2 swing. That window is {pct(hot.up_share, 0)} of up-time, so its stop rate is {f(hot.rr, 0)}&times; the rest of the cycle.</>}
+      lead={<>{hot.n_in} of {hot.n_in + hot.n_out} protective stops ({pct(hot.share, 0)}) start in cycle samples 2–5, at and just after the fastest J2 swing. That window is {pct(hot.up_share, 0)} of up-time, so its stop rate is {f(hot.rr, 0)}&times; the rest of the cycle.</>}
       details={<>
         <p>Rate ratio {f(hot.rr, 1)} {ci(hot.rr_lo, hot.rr_hi)} (exact Poisson). The fastest mean J2 speed is at sample {prof[fastest].phase} ({f(prof[fastest].speed[2], 2)} rad/s), after the tool-current peak at sample 1, likely the gripper acting. This locates the stops in one move; it does not say what in that move causes them.</p>
         <p>Grip losses cluster elsewhere: {g.n_in} of {g.n_in + g.n_out} start in samples 15–30 (rate ratio {f(g.rr, 1)} {ci(g.rr_lo, g.rr_hi)}), the transfer and place part of the cycle. That points to a different fix.</p>
@@ -203,7 +203,7 @@ function WhereStep({ d }: { d: Data }) {
             <tr key={b.bin}><td>{b.bin}</td><td>{pct(b.share_up, 0)}</td><td>{b.stop.n}</td><td>{f(b.stop.rate100, 2)} {ci(b.stop.lo100, b.stop.hi100, 2)}</td><td>{b.grip.n}</td></tr>
           ))}</tbody>
         </table>
-        <p className="small">Arm pose is a sketch: angles are integrated from the mean joint speed per sample, relative to cycle start.</p>
+        <p className="small">The timeline shows the first {prof.length} samples of the cycle, about 1 s apart. Arm pose is a sketch: angles are integrated from the mean joint speed per sample, relative to cycle start.</p>
       </>}>
       <div className="pendant">
         <div className={`pendant-arm${inWin ? " is-hot" : ""}`}>
@@ -335,11 +335,12 @@ function FixStep({ d }: { d: Data }) {
   ];
   return (
     <Step n={5} id="fix" title="What fixing that move is worth"
-      panel="ESTIMATE · SAMPLES 2–5 AT CYCLE-AVERAGE STOP RATE"
+      panel="IF SAMPLES 2–5 RAN AT THE AVERAGE RATE"
       lead={<>If samples 2–5 stopped no more often than the rest of the cycle, {f(fx.stops_removed, 0)} of {f(r.n_stop_onsets, 0)} stops would go. That is an upper-end target for a trial, not a forecast.</>}
       details={<>
         <p>Stops in the window after the fix = cycle-average rate ({f(fx.avg_rate_per_100s, 2)} per 100 s) &times; window up-time = {f(fx.stops_in_window_after, 1)}; removed = {f(fx.stops_in_window, 0)} &minus; {f(fx.stops_in_window_after, 1)} = {f(fx.stops_removed, 1)} ({pct(fx.share_removed, 0)} of stops, interval {pct(fx.share_removed_lo, 0)} to {pct(fx.share_removed_hi, 0)}).</p>
         <p>The window was picked as the hottest one on this same data, so the figure leans high, and the interval does not cover that choice.</p>
+        <p>MTBF here is {f(fx.mtbf_before_s, 1)} s before the fix, not the {f(r.mtbf_s, 1)} s in step 6, because this estimate counts up-time only on rows with a known stop label. Recovery per stop is held at the measured {f(fx.mttr_stop_s, 2)} s.</p>
       </>}>
       <div className="fix">
         <div className="fix-vis">

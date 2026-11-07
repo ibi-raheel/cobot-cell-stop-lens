@@ -45,7 +45,11 @@ export function CycleStrip({ profile, joint, sample, onSample, hot }: {
         role="img" aria-label={`Cycle timeline. Stop onsets, ${JOINTS[joint].id} speed and tool current for cycle samples 0 to ${n - 1}.`}>
         {/* hot window band */}
         <rect x={bandX0} y={rows.a[0] - 8} width={bandX1 - bandX0} height={rows.c[0] + rows.c[1] - rows.a[0] + 8} className="band" />
-        
+
+        {/* playhead: drawn under the marks and labels so it never strikes through them */}
+        <g className="playhead" style={{ transform: `translateX(${x(sample)}px)` }}>
+          <line x1={0} x2={0} y1={rows.a[0] - 8} y2={H - 20} />
+        </g>
 
         {/* row A: stop onsets */}
         <text x={ml} y={rows.a[0] - 24} className="row-lbl">Protective-stop onsets per cycle sample</text>
@@ -85,10 +89,6 @@ export function CycleStrip({ profile, joint, sample, onSample, hot }: {
           <text key={i} x={x(i)} y={H - 6} className={`tick${i === sample ? " tick-on" : ""}`} textAnchor="middle">{r.phase}</text>
         ))}
 
-        {/* playhead */}
-        <g className="playhead" style={{ transform: `translateX(${x(sample)}px)` }}>
-          <line x1={0} x2={0} y1={rows.a[0] - 8} y2={H - 20} />
-        </g>
       </svg>
       <div className="jog">
         <label htmlFor="jog" className="jog-lbl">Cycle sample <b>{String(p.phase).padStart(2, "0")}</b></label>
@@ -96,7 +96,7 @@ export function CycleStrip({ profile, joint, sample, onSample, hot }: {
           aria-valuetext={`Sample ${p.phase}: ${p.stop} stop onsets, ${JOINTS[joint].id} speed ${f(p.speed[joint], 2)} rad/s`} />
         <span className="jog-read"><b>{p.stop}</b> stop onset{p.stop === 1 ? "" : "s"} &middot; <b>{f(p.tool, 2)}</b> A tool</span>
       </div>
-      <p className="note"><i className="sw sw-band" aria-hidden />Shaded: samples {lo}–{hi}, where {hot.n_in} of the {hot.n_in + hot.n_out} stop onsets fall. Samples are about 1 s apart; the first 16 of the cycle are shown. Drag the chart or the slider to scrub.</p>
+      <p className="note"><i className="sw sw-band" aria-hidden />Shaded: samples {lo}–{hi}, where {hot.n_in} of the {hot.n_in + hot.n_out} stop onsets fall. Drag the chart or the slider to move the arm.</p>
     </div>
   );
 }
@@ -174,8 +174,8 @@ export function CostLadder({ tp }: { tp: Summary["throughput"] }) {
     <div className="ladder" role="table" aria-label="Stops that fit in the shift downtime budget, by recovery time">
       <div className="ld-row ld-head" role="row">
         <span role="columnheader">Recovery per stop</span>
-        <span role="columnheader">Stops that fit in {f(tp.budget_min, 2)} min of downtime per shift (one square = one stop)</span>
-        <span role="columnheader" className="num">Cases lost per stop</span>
+        <span role="columnheader">Stops that fit in {f(tp.budget_min, 2)} min of downtime per shift<span className="ld-h-long"> (one square = one stop)</span></span>
+        <span role="columnheader" className="num">Cases / stop</span>
       </div>
       {tp.rows.map((r) => {
         const full = Math.floor(r.max_stops_in_budget);
@@ -301,8 +301,8 @@ export function RateRatioPlot({ pooled, bySeg }: { pooled: Hot; bySeg: Record<st
     { key: "all", label: "All sessions", sub: `${pooled.n_in + pooled.n_out} stops`, h: pooled },
   ];
   const narrow = w < 520;
-  const ml = narrow ? 92 : 150, mr = 16, rowH = 38, top = 10;
-  const H = top + rows.length * rowH + 30;
+  const ml = narrow ? 92 : 150, mr = 16, rowH = 46, top = 14;
+  const H = top + rows.length * rowH + 44;
   const lo = 0.5, hi = 50;
   const X = (v: number) => ml + (Math.log(v / lo) / Math.log(hi / lo)) * (w - ml - mr);
   const ticks = narrow ? [1, 2, 5, 10, 20, 50] : [0.5, 1, 2, 5, 10, 20, 50];
@@ -312,11 +312,11 @@ export function RateRatioPlot({ pooled, bySeg }: { pooled: Hot; bySeg: Record<st
         aria-label={rows.map((r) => `${r.label}: rate ratio ${f(r.h.rr, 1)}, 95% interval ${f(r.h.rr_lo, 1)} to ${f(r.h.rr_hi, 1)}`).join("; ")}>
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={X(t)} x2={X(t)} y1={top - 4} y2={H - 26} className={t === 1 ? "axis" : "grid"} />
-            <text x={X(t)} y={H - 10} className="tick" textAnchor="middle">{t}&times;</text>
+            <line x1={X(t)} x2={X(t)} y1={top - 4} y2={H - 40} className={t === 1 ? "axis" : "grid"} />
+            <text x={X(t)} y={H - 24} className="tick" textAnchor="middle">{t}&times;</text>
           </g>
         ))}
-        <text x={X(1) + 5} y={top + 4} className="tick tick-l">no difference</text>
+        <text x={X(1)} y={H - 8} className="rr-note" textAnchor="middle">no difference</text>
         {rows.map((r, i) => {
           const y = top + i * rowH + rowH / 2 + 4;
           const pooledRow = r.key === "all";

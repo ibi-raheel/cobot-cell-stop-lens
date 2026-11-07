@@ -83,8 +83,14 @@ export function Arm({ pose, selected, onSelect, hot }: {
             {sel && <circle cx={p.x} cy={p.y} r={p.r + 5} fill="none" stroke={hot ? "var(--stop)" : "var(--select)"} strokeWidth="4" />}
             {p.j > 0 && <circle cx={p.x} cy={p.y} r={p.r} fill="var(--joint)" stroke="var(--ink)" strokeWidth="1.5" />}
             {p.j > 0 && <circle cx={p.x} cy={p.y} r={p.r * 0.38} fill="var(--arm)" />}
-            {(p.j < 3 || sel) && <text x={p.x + (p.j === 0 ? -22 : p.r + 6)} y={p.y + (p.j === 0 ? 4 : -p.r - 2)} className={`arm-lbl${sel ? " is-sel" : ""}`}
-              textAnchor={p.j === 0 ? "end" : "start"}>{JOINTS[p.j].id}</text>}
+            {(p.j < 3 || sel) && (() => {
+              // J0 sits left of the pedestal; J1 and J2 go on the open side of the joint (left of the link chain);
+              // the wrist joints label to the right, past the gripper.
+              const left = p.j <= 2;
+              const dx = p.j === 0 ? -34 : left ? -(p.r + 9) : p.r + 9;
+              return <text x={p.x + dx} y={p.y + 4} className={`arm-lbl${sel ? " is-sel" : ""}`}
+                textAnchor={left ? "end" : "start"}>{JOINTS[p.j].id}</text>;
+            })()}
           </g>
         );
       })}

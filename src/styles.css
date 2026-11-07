@@ -153,6 +153,7 @@ b { font-weight: 600; }
 .tick-l { text-anchor: start; }
 .tick-on { fill: var(--ink); font-weight: 600; }
 .val { font: 500 11px/1 var(--mono); fill: var(--ink); }
+.val, .row-lbl, .rr-lbl, .tick-l { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .row-lbl { font: 600 12px/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase; fill: var(--ink-2); }
 .axis { stroke: var(--ink-2); stroke-width: 1; }
 .grid { stroke: var(--rule); stroke-width: 1; }
@@ -194,7 +195,8 @@ b { font-weight: 600; }
 .ld-row.is-hl .ld-sq i.part { background: var(--stop-soft); }
 .ld-row.is-hl .ld-sq i.part b { background: var(--stop); }
 .ld-row.is-hl .ld-cases { color: var(--stop); }
-.ld-row.is-hl { background: linear-gradient(var(--stop), var(--stop)) left / 3px 100% no-repeat; padding-left: 12px; margin-left: -12px; }
+.ld-row.is-hl { background: color-mix(in srgb, var(--stop-soft) 70%, transparent); padding-left: 12px; padding-right: 12px; margin: 0 -12px; border-bottom-color: transparent; }
+.ld-row.is-hl .ld-lbl small { color: var(--stop); font-weight: 500; }
 
 /* ------------------------------------------------------------ 03 pendant + strip */
 .pendant {
@@ -211,7 +213,7 @@ b { font-weight: 600; }
 .pendant-tag .tag-hot { background: var(--stop); border-color: var(--stop); color: #fff; }
 .arm { display: block; width: 100%; height: auto; }
 .arm-tag { font: 500 10px/1 var(--mono); fill: var(--ink-3); text-transform: uppercase; }
-.arm-lbl { font: 500 11px/1 var(--mono); fill: var(--ink-3); }
+.arm-lbl { font: 500 11px/1 var(--mono); fill: var(--ink-3); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
 .arm-lbl.is-sel { fill: var(--ink); font-weight: 600; }
 .jt-click { cursor: pointer; }
 .jt-click:focus-visible { outline: none; }
@@ -228,7 +230,7 @@ b { font-weight: 600; }
   font: inherit; color: inherit; text-align: left; cursor: pointer;
   transition: background-color 120ms ease;
 }
-.ro-hint { margin: auto 0 0; padding: 10px; font-size: 13px; line-height: 1.35; color: var(--ink-3); border-top: 1px solid var(--rule); }
+.ro-hint { margin: auto 0 0; padding: 10px; font-size: 13px; line-height: 1.35; color: var(--ink-3); }
 div.ro { cursor: default; }
 @media (hover: hover) and (pointer: fine) { button.ro:hover { background: #dfe2dc; } }
 button.ro:active { background: #d7dad3; }
@@ -241,8 +243,12 @@ button.ro:active { background: #d7dad3; }
 .ro-bar::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--ink-3); }
 .ro-bar span { position: absolute; top: 0; bottom: 0; background: var(--ink-2); }
 .ro-ang { font: 400 13px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.ro.is-sel { background: var(--surface); box-shadow: inset 3px 0 0 var(--ink); }
-.ro.is-sel .ro-bar span { background: var(--ink); }
+.ro.is-sel { background: var(--bezel); color: var(--bezel-ink); border-bottom-color: var(--bezel); }
+.ro.is-sel .ro-id small, .ro.is-sel .ro-ang { color: #b5bab4; }
+.ro.is-sel .ro-bar { background: #3a4045; border-color: #4b5257; }
+.ro.is-sel .ro-bar::before { background: #9aa09a; }
+.ro.is-sel .ro-bar span { background: var(--bezel-ink); }
+@media (hover: hover) and (pointer: fine) { button.ro.is-sel:hover { background: var(--bezel); } }
 
 .strip { width: 100%; }
 .strip-svg { display: block; touch-action: pan-y; cursor: ew-resize; user-select: none; }
@@ -350,6 +356,7 @@ button.ro:active { background: #d7dad3; }
 /* ------------------------------------------------------------ 06 proof */
 .rr svg { display: block; }
 .rr-lbl { font: 600 13px/1 var(--sans); fill: var(--ink); }
+.rr-note { font: 400 11px/1 var(--mono); fill: var(--ink-3); font-style: italic; }
 .rr-ci { stroke: var(--ink); stroke-width: 2; }
 .rr-ci.is-weak { stroke: var(--out); stroke-dasharray: 4 3; }
 .rr-pt { fill: var(--ink); }
@@ -379,9 +386,15 @@ button.ro:active { background: #d7dad3; }
 @media (max-width: 720px) {
   .pendant { grid-template-columns: minmax(0, 1fr); }
   .fix { grid-template-columns: minmax(0, 1fr); }
-  .schem { grid-template-columns: minmax(0, 1fr); }
-  .schem-arrow { transform: rotate(90deg); justify-self: center; }
-  .schem-net { justify-self: start; }
+  /* inputs on top, then network -> warning on one row */
+  .schem { grid-template-columns: auto 26px minmax(0, 1fr); row-gap: 6px; }
+  .schem-in { grid-column: 1 / -1; max-width: none; }
+  .schem-arrow:first-of-type { grid-column: 1; transform: rotate(90deg); justify-self: center; }
+  .schem-net { grid-column: 1; grid-row: 3; justify-self: start; }
+  .schem-arrow:last-of-type { grid-column: 2; grid-row: 3; }
+  .schem-out { grid-column: 3; grid-row: 3; }
+  .schem-net { max-width: 168px; }
+  .schem-net span { white-space: normal; }
 }
 @media (max-width: 560px) {
   body { font-size: 16px; }
@@ -399,7 +412,10 @@ button.ro:active { background: #d7dad3; }
   .ld-lbl { font-size: 14px; }
   .ld-cases { font-size: 16px; }
   .ld-sq i { width: 8px; height: 8px; }
-  .ro-head, .ro { grid-template-columns: 54px minmax(0, 1fr) 40px; gap: 8px; }
+  .ro-head, .ro { grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; }
+  .ro { min-height: 34px; }
+  .ro-hint { padding: 8px 10px; font-size: 12.5px; }
+  .ld-head .ld-h-long { display: none; }
   .ro-id small { display: none; }
   .jog { grid-template-columns: auto minmax(0, 1fr); }
   .jog-read { grid-column: 1 / -1; white-space: normal; }
@@ -416,6 +432,8 @@ button.ro:active { background: #d7dad3; }
   .warn-ctl { gap: 10px; }
   .seg button { padding: 0 11px; font-size: 12px; }
   .checks { grid-template-columns: minmax(0, 1fr); }
-  .fixgrid { grid-template-columns: repeat(12, 1fr); }
+  .fixgrid { grid-template-columns: repeat(18, 1fr); gap: 3px; }
+  .schem-cells i { height: 3px; }
+  .schem-groups { gap: 3px; }
   .handoff { margin-top: -20px; font-size: 15px; }
 }
