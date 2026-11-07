@@ -244,7 +244,7 @@ The gravity terms help most on the shoulder and elbow (J1, J2), as they should. 
 
 **Baselines** (all fitted on the same training folds): chance; **cycle phase** (positive rate by sample index, smoothed as in section 5); **phase + recency** (gradient boosting on cycle phase and samples since the last down row: knows where the robot is and how long ago it last stopped, nothing about the signals); a **phase-only CNN** (same network, signal channels zeroed); and the section 5 gradient-boosted residual model refitted with the physics residuals.
 
-**Lead time.** A 1 Hz flag can lag the physical event, so each target is also run with a 3 s minimum lead: a row is positive only if the onset is 3 to 10 samples ahead, and rows 1 to 2 samples before an onset are left out of scoring (`lead_labels`, hand-checked in a test). The model gets no credit for spotting an event that is already under way.
+**Lead time.** A 1 Hz flag can lag the physical event, so each target is also run with a 3 s minimum lead: a row is positive only if the onset is 3 to 10 samples ahead, and rows 1 to 2 samples before an onset are left out of scoring (`lead_labels`, hand-checked in a test). The model gets no credit for spotting an event that is already under way. Caveat: the acceleration input (section 4) is a centred 7-point Savitzky-Golay derivative, so the acceleration at row $i$ uses speeds up to $i+3$, and gaps are filled by two-sided interpolation. A 3 s lead therefore does not on its own rule out look-ahead; the causal re-run below does.
 
 **Results (PR-AUC, 95 % CI).**
 
@@ -257,15 +257,16 @@ The gravity terms help most on the shoulder and elbow (J1, J2), as they should. 
 | Protective stop, 3-10 s ahead | 11.3 % | 0.118 | 0.195 | 0.232 (0.172-0.304) | 0.204 | 0.253 (0.197-0.330) | +0.021 (-0.036 to +0.080) |
 | Any down episode, 30 s | 52.7 % | 0.530 | 0.455 | 0.539 | 0.561 | 0.617 (0.531-0.691) | +0.077 (+0.001 to +0.143) |
 
-ROC-AUC for grip loss 3-10 s ahead: CNN 0.831, phase + recency 0.695, chance 0.49.
+ROC-AUC for grip loss 3-10 s ahead: CNN 0.831, phase + recency 0.695, chance 0.49. The "phase + recency" column counts time since the last down episode of any kind; for grip loss a grip-aware version (below) is the fairer bar and scores 0.343, so the last column overstates the grip-loss gain by about half.
 
 **Checks on the grip-loss result.**
 - *Not the gripper current.* With the tool-current channel silenced the CNN scores 0.574 (0.493-0.650) at 3-10 s; the warning comes from the joint channels, not from the gripper signal itself.
 - *Not phase.* The phase-only CNN on the any-episode target scores 0.304, level with phase + recency (0.306); the signal channels add the +0.10.
 - *Every session.* Out-of-fold PR-AUC at 3-10 s, CNN vs phase + recency: session 0 (96 positive rows) 0.61 vs 0.19, session 1 (147) 0.66 vs 0.24, session 2 (298) 0.50 vs 0.11.
-- *Not lead-time leakage.* Moving from 1-10 s to 3-10 s ahead leaves the score almost unchanged (0.563 to 0.549).
+- *Not look-ahead in the features.* `pipeline/check_leakage.py` recomputes acceleration from a one-sided quadratic fit to the last 7 samples and forward-fills gaps (unit test: the shipped filter reacts to a speed step 3 samples early, the causal one does not). Grip loss 3-10 s ahead: CNN 0.567 (0.476-0.651) against 0.549 with the shipped features. Protective stop, 10 s: 0.280 against 0.272. No change in either conclusion.
+- *Against a grip-aware baseline.* Grip losses come in runs: 33 of 77 onsets start within 25 samples of the previous grip onset. The phase + recency baseline counts samples since the last down row of any kind, which protective stops dominate, so it misses that. A gradient-boosted baseline on cycle phase, samples since the last down row, since the last stop and since the last grip loss scores **0.343 (0.267-0.417)** at 3-10 s; the CNN's edge over it is **+0.206 (+0.130 to +0.288)**, about half the +0.42 against the weaker baseline. Scored only on rows with no grip loss in the previous 25 samples (5,386 rows, 271 positive, base rate 0.050), the CNN scores 0.318 (0.193-0.450) against 0.089, difference +0.088 to +0.373; with no grip loss in the previous 12 samples, 0.401 against 0.126. So part of the warning is "a grip loss happened a few seconds ago", and part survives without it.
 
-**Honest reading.** On protective stops the sequence model beats the cycle-phase baseline (+0.064, CI +0.029 to +0.112) but **not** the phase + recency baseline (+0.027, CI -0.027 to +0.085): knowing where the robot is in the cycle and how long since it last stopped captures most of what is predictable about stops at 1 Hz, which is why the stop story is the cycle window (section 3) and the fix (section 5.6), not an alarm. Where learning genuinely wins is **grip loss**: phase and recency are almost useless there (0.13 against 0.08 for chance), while the CNN on joint currents, physics residuals and speeds reaches 0.55 with at least 3 s of lead, in every session, with the gripper channel removed. What in the joint signals precedes a grip loss (a payload swing, a slower transfer, a cycle variant) is not identified; that needs joint positions and a faster sample rate.
+**Honest reading.** On protective stops the sequence model beats the cycle-phase baseline (+0.064, CI +0.029 to +0.112) but **not** the phase + recency baseline (+0.027, CI -0.027 to +0.085): knowing where the robot is in the cycle and how long since it last stopped captures most of what is predictable about stops at 1 Hz, which is why the stop story is the cycle window (section 3) and the fix (section 5.6), not an alarm. Where learning wins is **grip loss**: phase and time since the last down episode carry little there (0.13 against 0.08 for chance), and adding the time since the last grip loss lifts the baseline to 0.34, because grip losses come in runs. The CNN on joint currents, physics residuals and speeds reaches 0.55 with at least 3 s of lead, +0.21 over that grip-aware baseline, with the gripper channel removed and with causal features, and it still separates isolated grip losses (0.32 vs 0.09). This is one robot and 77 grip-loss onsets, and the CNN's configuration (window, epochs, learning rate) was set without a separate tuning split, so treat the size of the edge as a lead to confirm on a new recording, not a measured alarm performance. What in the joint signals precedes a grip loss (a payload swing, a slower transfer, a cycle variant) is not identified; that needs joint positions and a faster sample rate.
 
 Note on the numbers in 5.4: there, "blocked" meant GroupKFold over shuffled blocks of 5 cycles, so training data came from both before and after the test block. Here each test fold is one contiguous stretch of time with a purge, which is stricter; the phase baseline drops (0.332 to 0.277 on the any-episode target) because stop-dense and stop-sparse stretches no longer mix.
 
@@ -285,7 +286,7 @@ $$n_\text{in}' = \bar\lambda\,E_\text{in}, \quad \bar\lambda = \frac{n_\text{in}
 | MTBF between down episodes | 37.5 s | 57.5 s |
 | Availability (this rig) | 92.9 % | 95.1 % |
 
-The interval comes from 1,000 resamples of 5-cycle blocks. Hand check (unit test): window 10 stops in 100 s, rest 10 in 900 s, average 0.02/s, so the window keeps 2 and loses 8 (40 % of stops), and availability with 3 s per stop goes from 1000/1060 to 1000/1036. The rig figures are not transferred to a production cell; the share of stops removed (about 60 %) is the number to test there, and section 3.1 sizes that trial.
+The interval comes from 1,000 resamples of 5-cycle blocks. It covers sampling noise only: samples 2-5 were chosen because they are the hottest window in this same data, so the in-sample share removed is biased upward (a hot window picked post hoc tends to look hotter than it will on new data). Read 59 % as an upper-end target for a trial, not a forecast. MTBF here uses up-time on rows with a known stop label (37.5 s), slightly different from the 37.8 s in section 2. Hand check (unit test): window 10 stops in 100 s, rest 10 in 900 s, average 0.02/s, so the window keeps 2 and loses 8 (40 % of stops), and availability with 3 s per stop goes from 1000/1060 to 1000/1036. The rig figures are not transferred to a production cell; the share of stops removed (about 60 %) is the number to test there, and section 3.1 sizes that trial.
 
 ## 6. Cost per stop against a contracted uptime budget
 
@@ -313,7 +314,9 @@ Hand check (unit test): 480 min x 0.004 = 1.92 min; a 2 min reset at 12 cases/mi
 - 1 Hz sampling hides sub-second transients; no joint positions, so no explicit gravity term and no way to name the waypoint, only the sample index in the cycle.
 - The hot window was found on the pooled data; the per-segment re-check is not independent of that choice and segment 1 has only 14 stops. It has not been tested on an untouched recording or cell.
 - The section 4 joint load models are fitted once on all clean rows (sections 5.1-5.4). In section 5.5 the physics residual model is refitted inside each fold on training rows only.
-- Protective stops: the sequence model beats the cycle-phase baseline but not a phase + recency baseline (section 5.5). Grip loss is the task where the learned model clearly wins; the precursor it uses is not identified.
+- Protective stops: the sequence model beats the cycle-phase baseline but not a phase + recency baseline (section 5.5). Grip loss is the task where the learned model wins: +0.21 PR-AUC over a grip-aware recency baseline (+0.42 over the weaker any-episode recency baseline); the precursor it uses is not identified, and part of the signal is the run structure of grip losses.
+- The acceleration feature uses a centred filter (3 samples of look-ahead). The causal re-run in section 5.5 leaves the results unchanged, but the shipped `learned.json` still uses the centred filter.
+- No separate tuning split: the CNN settings were fixed by hand and evaluated on the same folds that report the scores.
 - One robot only, so the new-machine case cannot be tested.
 - Only 2.08 h of observed time and one robot.
 - The planned gripper force/torque screen on the Robot Execution Failures dataset was not built: that dataset is a separate robot with 15-sample force/torque windows and no shared cycle structure, so it could not be tied to these stop events. Grip losses here are analysed by cycle phase instead (section 3).
@@ -325,5 +328,6 @@ python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt   # includ
 mkdir -p downloads && curl -L -o downloads/ur3.zip "https://archive.ics.uci.edu/static/public/963/ur3+cobotops.zip" && unzip -o downloads/ur3.zip -d downloads
 OMP_NUM_THREADS=2 .venv/bin/python -I pipeline/run.py downloads/dataset_02052023.xlsx public/data
 OMP_NUM_THREADS=3 .venv/bin/python -I pipeline/run_learned.py downloads/dataset_02052023.xlsx public/data   # about 7 min on 3 CPU threads
+OMP_NUM_THREADS=3 .venv/bin/python -I pipeline/check_leakage.py downloads/dataset_02052023.xlsx public/data  # causal-feature and grip-aware-baseline checks
 .venv/bin/python -I -m pytest -q tests
 ```

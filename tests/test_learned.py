@@ -146,3 +146,26 @@ def test_cnn_drop_channel_removes_the_signal():
     Pn = np.zeros((600, 17))
     s = LM.train_cnn(Wn[:400], Pn[:400], y[:400], Wn[400:], Pn[400:], epochs=30, seeds=(0,), drop=(0,))
     assert LM.auc(y[400:].astype(int), s, np.ones(200, bool)) < 0.65
+
+
+def test_shipped_acceleration_looks_ahead_causal_one_does_not():
+    """A speed step at row 10: the shipped centred filter already reacts at row 7 (3 samples early);
+    the causal filter used in check_leakage.py stays exactly zero until the step arrives."""
+    import check_leakage as CL
+    n = 30
+    sp = np.where(np.arange(n) >= 10, 1.0, 0.0)
+    df = pd.DataFrame({f"Speed_J{j}": sp for j in range(6)})
+    df["segment"] = 0
+    shipped = W.add_kinematics(df)["Acc_J0"].to_numpy()
+    causal = CL.causal_acc(df)["Acc_J0"].to_numpy()
+    assert abs(shipped[7]) > 1e-6          # look-ahead: row 7 sees the step at row 10
+    assert np.all(causal[:10] == 0.0)      # no look-ahead
+    assert causal[10] > 0
+
+
+def test_since_last_by_kind():
+    """Recency per event kind: rows since the last grip row, reset at a segment boundary."""
+    df = pd.DataFrame(dict(segment=[0] * 6 + [1] * 3))
+    grip = np.array([0, 1, 0, 0, 0, 0, 0, 0, 0], bool)
+    out = LM.since_last(df, grip)
+    assert out[0] == 300 and out[1] == 0 and out[5] == 4 and out[6] == 300
