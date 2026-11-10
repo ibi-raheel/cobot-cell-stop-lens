@@ -23,7 +23,7 @@ export function App() {
   return (
     <div className="page">
       <header className="bar">
-        <span className="bar-id"><i className="bar-led" aria-hidden />CELL STOP LENS</span>
+        <span className="bar-id"><i className="bar-led" aria-hidden />COBOT CELL STOP LENS</span>
         <span className="bar-meta">UR3 cobot &middot; real telemetry &middot; {d ? `${f(d.s.dataset.rows, 0)} samples` : "loading"}</span>
       </header>
 
@@ -57,6 +57,7 @@ export function App() {
               Real telemetry, no synthetic data. Case rate, shift length and the uptime target are assumptions, not measurements.
             </p>
             <p className="foot-more">More work at <a href="https://ibiraheel.com">ibiraheel.com</a></p>
+            <p className="foot-src">Code, method and tests on <a href="https://github.com/ibi-raheel/cobot-cell-stop-lens">GitHub</a></p>
           </footer>
         </main>
       </div>
