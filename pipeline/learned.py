@@ -194,7 +194,7 @@ def train_cnn(Wtr, Ptr, ytr, Wte, Pte, epochs=15, seeds=(0, 1), lr=3e-3, wd=1e-3
         torch.manual_seed(s)
         rng = np.random.default_rng(s)
         net = Net()
-        opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=wd)
+        optimizer = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=wd)
         pos = max(ytr.mean(), 1e-3)
         lossf = nn.BCEWithLogitsLoss(pos_weight=torch.tensor((1 - pos) / pos))
         wt, pt, yt = (torch.tensor(Wtr_n, dtype=torch.float32), torch.tensor(Ptr, dtype=torch.float32),
@@ -204,10 +204,10 @@ def train_cnn(Wtr, Ptr, ytr, Wte, Pte, epochs=15, seeds=(0, 1), lr=3e-3, wd=1e-3
             perm = rng.permutation(len(yt))
             for b in range(0, len(perm), 256):
                 ix = perm[b:b + 256]
-                opt.zero_grad()
+                optimizer.zero_grad()
                 loss = lossf(net(wt[ix], pt[ix]), yt[ix])
                 loss.backward()
-                opt.step()
+                optimizer.step()
         net.eval()
         with torch.no_grad():
             preds.append(torch.sigmoid(net(torch.tensor(Wte_n, dtype=torch.float32),
